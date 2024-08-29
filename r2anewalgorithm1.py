@@ -17,25 +17,32 @@ class R2ANewAlgorithm1(IR2A):
         # definir o (state s, action a, reward r)
         # definir a tabela Q (com as tuplas state, action)
         # deve existir uma atualização para a tabela Q a cada nova ação, com penalidade e taxa de aprendizado
-
+        self.qi = []
+        self.tableQ = []
 
     def handle_xml_request(self, msg):
         #self.request_time 
-        self.send_down(msg)
+        self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_xml_response(self, msg):
         # ...
+        self.parsed_mpd = parse_mpd(msg.get_payload()) # parser mpd info
+        self.qi = self.parsed_mpd.get_qi() # lista de qualidades possíveis
 
-        self.send_up(msg)
+        self.send_up(msg) # envia até a Camada Superior (Player)
 
     def handle_segment_size_request(self, msg):
-        # ...
-        pass
+        # recebe o próximo segmento de vídeo, sem informar a qualidade.
+
+        # define a qualidade msg.add_quality_id(x)
+        self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_segment_size_response(self, msg):
-        # ...
-        
-        self.send_up(msg)
+        # a representação segmento ss é recebido pelo IR2A, deve-se executar as instruções para o correto funcionamento;
+        # tamanho do segmento recebido = msg.get_bit_length()
+        # diferenca de tempo transcorrido entre o momento da requisicao realizada ( handle_segment_size_request() )
+        # e a resposta recebida ( handle_segment_size_response() )
+        self.send_up(msg) # envia até a Camada Superior (Player)
 
     def initialize(self):
         pass
