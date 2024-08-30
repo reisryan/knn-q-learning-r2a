@@ -18,7 +18,8 @@ class R2ANewAlgorithm1(IR2A):
         # definir a tabela Q (com as tuplas state, action)
         # deve existir uma atualização para a tabela Q a cada nova ação, com penalidade e taxa de aprendizado
         self.qi = []
-        self.tableQ = []
+        self.qi_index = 0
+        self.t = 0
 
     def handle_xml_request(self, msg):
         #self.request_time 
@@ -33,7 +34,7 @@ class R2ANewAlgorithm1(IR2A):
 
     def handle_segment_size_request(self, msg):
         # recebe o próximo segmento de vídeo, sem informar a qualidade.
-
+        # x = qualidade definida
         # define a qualidade msg.add_quality_id(x)
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
