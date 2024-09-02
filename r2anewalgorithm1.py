@@ -6,8 +6,8 @@
 
 from r2a.ir2a import IR2A
 from player.parser import *
-import random
-import numpy as np
+from sklearn.neighbors import KNeighborsRegressor as KnnR
+import numpy as np 
 
 
 class R2ANewAlgorithm1(IR2A):
@@ -19,11 +19,16 @@ class R2ANewAlgorithm1(IR2A):
         # deve existir uma atualização para a tabela Q a cada nova ação, com penalidade e taxa de aprendizado
         self.qi = []
         self.X = 0
-        self.qi_index = 0
-        self.statesqi = 0
-        self.adaplist = []
+        s_train = [] # Estados s(t) # s_train
+        q_train = [] # Estados Q(s(t), a(t)) # q_train
         # self.Q = np.zeros((len(self.adaplist[0]), self.qi_index))
         self.alpha, self.gamma, self.episilon = 0.1, 0.9, 0.1
+        # 2. Inicialize o KNN Regressor
+        knn = KNeighborsRegressor(n_neighbors=K)
+
+        # 3. Treine o modelo com os estados anteriores e valores Q
+        knn.fit(s_train, q_train)
+
 
     def handle_xml_request(self, msg):
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
@@ -42,6 +47,7 @@ class R2ANewAlgorithm1(IR2A):
         # recebe o próximo segmento de vídeo, sem informar a qualidade.
         # x = qualidade definida / definição do algoritmo Q learning
         # self.X = 
+        # adicionar aqui uma previsão para o s(t)
         msg.add_quality_id(self.qi[self.X]) #define a qualidade conforme o knn q-learning
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
