@@ -24,10 +24,10 @@ class R2ANewAlgorithm1(IR2A):
         # self.Q = np.zeros((len(self.adaplist[0]), self.qi_index))
         self.alpha, self.gamma, self.episilon = 0.1, 0.9, 0.1
         # 2. Inicialize o KNN Regressor
-        knn = KNeighborsRegressor(n_neighbors=K)
+        knn = KnnR(n_neighbors=1)
 
         # 3. Treine o modelo com os estados anteriores e valores Q
-        knn.fit(s_train, q_train)
+        #knn.fit(s_train, q_train)
 
 
     def handle_xml_request(self, msg):
@@ -38,6 +38,11 @@ class R2ANewAlgorithm1(IR2A):
         self.parsed_mpd = parse_mpd(msg.get_payload()) # parser mpd info
         self.qi = self.parsed_mpd.get_qi() # lista de qualidades possíveis
         self.adaplist = self.parsed_mpd.get_adaptation_set_info()
+        print("MDP list", self.parsed_mpd.get_mpd_info)
+        print("get first level", self.parsed_mpd.get_first_level_adp_set)
+        print("get segment template", self.parsed_mpd.get_segment_template)
+        print("get period info", self.parsed_mpd.get_period_info)
+        print("get program info", self.parsed_mpd.get_program_info)
         print("Adaptationsetinfo:>", self.adaplist)
         print("Qi:>", self.qi)
 
