@@ -7,19 +7,18 @@
 from r2a.ir2a import IR2A
 from player.parser import *
 from sklearn.neighbors import KNeighborsRegressor as KnnR
+from sklearn.metrics import mean_squared_error
 import numpy as np 
 
 class KNNModel:
-    def __init__(self, n_neighbors=5, weights='uniform'):
+    def __init__(self, n_neighbors=1):
         """
         Inicializa o modelo KNN.
         
         :param n_neighbors: Número de vizinhos a serem considerados.
-        :param weights: Tipo de ponderação ('uniform' ou 'distance').
         """
         self.n_neighbors = n_neighbors
-        self.weights = weights
-        self.model = KNeighborsRegressor(n_neighbors=self.n_neighbors, weights=self.weights)
+        self.model = KNeighborsRegressor(n_neighbors=self.n_neighbors, weights='distance')  # Usar distância como ponderação
 
     def fit(self, X, y):
         """
@@ -39,6 +38,25 @@ class KNNModel:
         """
         return self.model.predict(X)
 
+    def knn_weights(self, X):
+        """
+        Calcula os pesos w(k) para os K vizinhos mais próximos.
+        
+        :param X: Estado atual para o qual encontrar os vizinhos.
+        :return: Pesos w(k) dos vizinhos.
+        """
+        distances, indices = self.model.kneighbors(X)
+        
+        # Calcular w(k) = (1/d(k)) / sum(1/d(k)) para cada k
+        weights = []
+        for d in distances:
+            inverse_distances = 1 / d  # 1/d(k)
+            sum_inverse_distances = np.sum(inverse_distances)  # Somatório de 1/d(k)
+            w = inverse_distances / sum_inverse_distances  # Ponderação final
+            weights.append(w)
+        
+        return weights
+
     def evaluate(self, X_test, y_test):
         """
         Avalia o modelo usando o erro quadrático médio (MSE).
@@ -57,6 +75,7 @@ class Qlearn:
         self.a = np.array(a)
         self.Q = np.zeros((self.s).size,(self.a).size)
         KNN = KNNModel()
+        KNN.fit(self.s, self.Q)
         self.alpha, self.beta, self.gamma, self.e = 0.5, 0,4, 0,15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
 
     def choose_action(self, s):
@@ -64,13 +83,27 @@ class Qlearn:
 
     def update(self, s, a, r, next):
         if np.isin(s, self.s):
-            #upd = r + self.beta * max(self.Q[next,b] - self.Q[s, a])
-            #self.Q[s,a] = self.Q[s,a] + self.alpha * upd
+            max = self.choose_action(next)
+            upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
+            self.Q[s,a] = self.Q[s,a] + self.alpha * upd
             pass
         elif not np.isin(s, self.s):
-            #wk = 
-            #upd = r + self.beta * sum(w'k*Q(KNN(next),b)) - sum(wk*Q(KNNt,b))
-            #self.Q[KNN,a] = self.Q[KNN,a] + self.alpha*upd
+            # Escolhe a ação para o próximo estado
+            max_action = self.choose_action(next_state)
+
+            # Obtém os pesos dos k-vizinhos mais próximos do estado atual
+            w = KNN.knn_weights(s)
+
+            # Obtém os índices dos k-vizinhos mais próximos para o estado atual e próximo
+            next_neighbors_distances, next_neighbors_indices = KNN.kneighbors(next_state)
+            s_neighbors_distances, s_neighbors_indices = KNN.kneighbors(s)
+
+            # Atualiza Q usando a fórmula ajustada
+            upd = (r + self.beta * sum(w[i] * np.max(self.Q[next_neighbors_indices[i], max_action]) for i in range(len(w))) 
+            - sum(w[i] * np.max(self.Q[s_neighbors_indices[i], b]) for i in range(len(w))))
+
+            # Atualiza a tabela Q para o estado s e ação a
+            self.Q[s_neighbors_indices, a] = self.Q[s_neighbors_indices, a] + self.alpha * upd
             pass 
 
     def train(self, e, env):
@@ -100,7 +133,7 @@ class R2ANewAlgorithm1(IR2A):
         
     def handle_xml_request(self, msg):
         # definir o (state s, action a, reward r)
-        self.Q = Qlearn(s, a)
+        # self.Q = Qlearn(s, a)
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_xml_response(self, msg):
@@ -108,6 +141,7 @@ class R2ANewAlgorithm1(IR2A):
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def handle_segment_size_request(self, msg):
+        
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_segment_size_response(self, msg):
