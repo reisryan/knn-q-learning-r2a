@@ -6,6 +6,7 @@
 
 from r2a.ir2a import IR2A
 from player.parser import *
+from player.player import *
 from sklearn.neighbors import KNeighborsRegressor as KnnR
 from sklearn.metrics import mean_squared_error
 import numpy as np 
@@ -86,7 +87,7 @@ class Qlearn:
             max = self.choose_action(next)
             upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
             self.Q[s,a] = self.Q[s,a] + self.alpha * upd
-            pass
+
         elif not np.isin(s, self.s):
             # Escolhe a ação para o próximo estado
             max_action = self.choose_action(next_state)
@@ -100,11 +101,10 @@ class Qlearn:
 
             # Atualiza Q usando a fórmula ajustada
             upd = (r + self.beta * sum(w[i] * np.max(self.Q[next_neighbors_indices[i], max_action]) for i in range(len(w))) 
-            - sum(w[i] * np.max(self.Q[s_neighbors_indices[i], b]) for i in range(len(w))))
+            - sum(w[i] * self.Q[s_neighbors_indices[i], max_action] for i in range(len(w))))
 
             # Atualiza a tabela Q para o estado s e ação a
             self.Q[s_neighbors_indices, a] = self.Q[s_neighbors_indices, a] + self.alpha * upd
-            pass 
 
     def train(self, e, env):
         """
@@ -129,22 +129,32 @@ class Qlearn:
 class R2ANewAlgorithm1(IR2A):
 
     def __init__(self, id):
-        IR2A.__init__(self, id) #herda o IR2A e seus métodos abstratos        
+        #SimpleModule.__init__(self, id)
+        IR2A.__init__(self, id) #herda o IR2A e seus métodos abstratos
+        self.qi = []
+        self.parsed_mpd = '' 
         
     def handle_xml_request(self, msg):
-        # definir o (state s, action a, reward r)
-        # self.Q = Qlearn(s, a)
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_xml_response(self, msg):
-                
+        self.parsed_mpd = parse_mpd(msg.get_payload())
+        self.qi = self.parsed_mpd.get_qi()
+        
+        a = np.array(self.qi)
+        # definir o (state s, action a, reward r)
+        # self.Q = Qlearn(s, a)
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def handle_segment_size_request(self, msg):
-        
+        msg.add_quality_id(self.qi[0])
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_segment_size_response(self, msg):
+        q = self.qi.index(msg.get_quality_id())
+        seg = msg.get_segment_size()
+        print(msg.get_bit_length())
+        print(msg.get_kind())
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def initialize(self):
