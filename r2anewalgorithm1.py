@@ -7,9 +7,12 @@
 from r2a.ir2a import IR2A
 from player.parser import *
 from player.player import *
+from statistics import mean
 from sklearn.neighbors import KNeighborsRegressor as KnnR
 from sklearn.metrics import mean_squared_error
-import numpy as np 
+from sklearn.preprocessing import MinMaxScaler
+import numpy as np
+import time
 
 class KNNModel:
     def __init__(self, n_neighbors=1):
@@ -113,7 +116,7 @@ class Qlearn:
         :param e: Número de episódios de treinamento.
         :param env: O ambiente de treinamento, que deve ter métodos `reset`, `step` e `render`.
         """
-        for episode in range(episodes):
+        for episode in range(e):
             state = env.reset()
             done = False
             
@@ -131,30 +134,73 @@ class R2ANewAlgorithm1(IR2A):
     def __init__(self, id):
         #SimpleModule.__init__(self, id)
         IR2A.__init__(self, id) #herda o IR2A e seus métodos abstratos
-        self.qi = []
-        self.parsed_mpd = '' 
+        self.qi = [] #lista de qualidades
+        self.ls = [] #lista das ultimas-qualidades
+        self.throughputs = [] #lista de throughputs
+        self.td = [] # lista dos time-of-downloads
+        self.buffersizeseconds = []
+        self.parsed_mpd = ''
         
     def handle_xml_request(self, msg):
+        self.request_time = time.perf_counter()
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_xml_response(self, msg):
+        
         self.parsed_mpd = parse_mpd(msg.get_payload())
         self.qi = self.parsed_mpd.get_qi()
         
-        a = np.array(self.qi)
-        # definir o (state s, action a, reward r)
-        # self.Q = Qlearn(s, a)
+        #t = time.perf_counter() - self.request_time
+        #self.throughputs.append(msg.get_bit_length() / t)
+
+        
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def handle_segment_size_request(self, msg):
-        msg.add_quality_id(self.qi[0])
+        self.request_time = time.perf_counter()
+        #avg = mean(self.throughputs) / 2
+        
+        if hasattr(self, 'Q'):
+            act = self.qi[self.Q.choose_action(self.ls[act])]
+        else:
+            act = 0
+        msg.add_quality_id(self.qi[act])
+        self.ls.append(act)
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_segment_size_response(self, msg):
+        t = time.perf_counter() - self.request_time
+        self.throughputs.append(msg.get_bit_length() / t)
+        self.td.append(t)
+        self.buffersizeseconds.append(float(self.buffersizeseconds[-1]+t))
         q = self.qi.index(msg.get_quality_id())
-        seg = msg.get_segment_size()
-        print(msg.get_bit_length())
-        print(msg.get_kind())
+
+        bufferocupancy = np.array(self.buffersizeseconds)
+        throughputsestimate = np.array(self.throughputs)
+        lastsegments = np.array(self.ls)
+        download_time = np.array(self.td)
+
+        scaler = MinMaxScaler()
+
+        bufferocupancy = scaler.fit_transform(bufferocupancy.reshape(-1,1)).flatten()
+        throughputsestimate = scaler.fit_transform(throughputsestimate.reshape(-1,1)).flatten()
+        lastsegments = scaler.fit_transform(lastsegments.reshape(-1,1)).flatten()
+        download_time = scaler.fit_transform(download_time.reshape(-1,1)).flatten()
+
+        states = np.vstack([
+            bufferocupancy,
+            throughputsestimate,
+            lastsegments,
+            download_time
+        ]).T #transposta para que cada linha seja um estado
+
+        a = np.array(self.qi)
+        # definir o (state s, action a, reward r)
+        if states:
+            self.Q = Qlearn(states, a)
+        #seg = msg.get_segment_size()
+        #print(msg.get_bit_length())
+        #print(msg.get_kind())
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def initialize(self):
