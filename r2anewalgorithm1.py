@@ -75,8 +75,8 @@ class KNNModel:
 
 class Qlearn:
     def __init__(self, s, a):
-        self.s = np.array(s)
-        self.a = np.array(a)
+        self.s = s
+        self.a = a
         self.Q = np.zeros((self.s).size,(self.a).size)
         KNN = KNNModel()
         KNN.fit(self.s, self.Q)
