@@ -3,7 +3,7 @@
 #         Marcos Gabriel de Oliveira de Souza - 170126307   #
 #         Ryan Reis Fontenele - 211036132                   #
 #############################################################
-
+# dataset original: "http://45.171.101.167/DASHDataset/BigBuckBunny/1sec/BigBuckBunny_1s_simple_2014_05_09.mpd",
 from r2a.ir2a import IR2A
 from player.parser import *
 from player.player import *
@@ -22,7 +22,7 @@ class KNNModel:
         :param n_neighbors: Número de vizinhos a serem considerados.
         """
         self.n_neighbors = n_neighbors
-        self.model = KNeighborsRegressor(n_neighbors=self.n_neighbors, weights='distance')  # Usar distância como ponderação
+        self.model = KnnR(n_neighbors=self.n_neighbors, weights='distance')  # Usar distância como ponderação
 
     def fit(self, X, y):
         """
@@ -77,10 +77,10 @@ class Qlearn:
     def __init__(self, s, a):
         self.s = s
         self.a = a
-        self.Q = np.zeros((self.s).size,(self.a).size)
+        self.Q = np.zeros((self.s.size,self.a.size))
         KNN = KNNModel()
-        KNN.fit(self.s, self.Q)
-        self.alpha, self.beta, self.gamma, self.e = 0.5, 0,4, 0,15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
+        #KNN.fit(np.reshape(self.s, (-1, 4)), np.reshape(self.a, (-1,)))
+        self.alpha, self.beta, self.gamma, self.e = 0.5, 0.4, 0.15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
 
     def choose_action(self, s):
         np.argmax(self.Q[s])
@@ -91,12 +91,12 @@ class Qlearn:
             upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
             self.Q[s,a] = self.Q[s,a] + self.alpha * upd
 
-        elif not np.isin(s, self.s):
+        '''elif not np.isin(s, self.s):
             # Escolhe a ação para o próximo estado
             max_action = self.choose_action(next_state)
 
             # Obtém os pesos dos k-vizinhos mais próximos do estado atual
-            w = KNN.knn_weights(s)
+            #w = KNN.knn_weights(s)
 
             # Obtém os índices dos k-vizinhos mais próximos para o estado atual e próximo
             next_neighbors_distances, next_neighbors_indices = KNN.kneighbors(next_state)
@@ -107,7 +107,7 @@ class Qlearn:
             - sum(w[i] * self.Q[s_neighbors_indices[i], max_action] for i in range(len(w))))
 
             # Atualiza a tabela Q para o estado s e ação a
-            self.Q[s_neighbors_indices, a] = self.Q[s_neighbors_indices, a] + self.alpha * upd
+            self.Q[s_neighbors_indices, a] = self.Q[s_neighbors_indices, a] + self.alpha * upd '''
 
     def train(self, e, env):
         """
@@ -160,10 +160,18 @@ class R2ANewAlgorithm1(IR2A):
         self.request_time = time.perf_counter()
         #avg = mean(self.throughputs) / 2
         
+        # Inicializa 'act' com um valor padrão
+        act = 0  
+
         if hasattr(self, 'Q'):
-            act = self.qi[self.Q.choose_action(self.ls[act])]
+            # Verifica se act não está vazio e usa um valor padrão se necessário
+            if act:
+                act = self.qi[self.Q.choose_action(self.ls[act])]
+            else:
+                act = 0  # Valor padrão, caso 'self.ls' esteja vazio
         else:
             act = 0
+
         msg.add_quality_id(self.qi[act])
         self.ls.append(act)
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
@@ -172,7 +180,11 @@ class R2ANewAlgorithm1(IR2A):
         t = time.perf_counter() - self.request_time
         self.throughputs.append(msg.get_bit_length() / t)
         self.td.append(t)
-        self.buffersizeseconds.append(float(self.buffersizeseconds[-1]+t))
+        if not self.buffersizeseconds:
+            i = 0
+        else:
+            i = self.buffersizeseconds[-1]
+        self.buffersizeseconds.append(float(i+t))
         q = self.qi.index(msg.get_quality_id())
 
         bufferocupancy = np.array(self.buffersizeseconds)
@@ -196,11 +208,11 @@ class R2ANewAlgorithm1(IR2A):
 
         a = np.array(self.qi)
         # definir o (state s, action a, reward r)
-        if states:
+        #print(states, a)
+        if states.any():
             self.Q = Qlearn(states, a)
-        #seg = msg.get_segment_size()
-        #print(msg.get_bit_length())
-        #print(msg.get_kind())
+
+        #print("segm, bitlength e kind", msg.get_segment_size(), msg.get_bit_length(), msg.get_kind())
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def initialize(self):
