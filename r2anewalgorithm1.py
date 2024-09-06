@@ -84,14 +84,17 @@ class Qlearn:
         self.alpha, self.beta, self.gamma, self.e = 0.5, 0.4, 0.15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
 
     def choose_action(self, s):
-        np.argmax(self.Q[s])
+        if np.random.uniform(0, 1) < self.e:  # taxa de exploração
+            return np.random.choice(self.a.size)  # escolhe uma ação aleatória
+        else:
+            return np.argmax(self.Q[s])
 
     def update(self, s, a, r, next):
-        if np.isin(s, self.s):
-            max = self.choose_action(next)
-            upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
-            self.Q[s,a] = self.Q[s,a] + self.alpha * upd
-
+        #if np.isin(s, self.s):
+        max = self.choose_action(next)
+        upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
+        self.Q[s,a] = self.Q[s,a] + self.alpha * upd
+        print("updated", s, a, r, next)
         '''elif not np.isin(s, self.s):
             # Escolhe a ação para o próximo estado
             max_action = self.choose_action(next_state)
@@ -141,7 +144,10 @@ class R2ANewAlgorithm1(IR2A):
         self.td = [] # lista dos time-of-downloads
         self.buffersizeseconds = []
         self.parsed_mpd = ''
-        
+        self.Q = Qlearn(np.empty(4000), np.empty(20))
+        self.statesdef = False
+        self.act = 0
+
     def handle_xml_request(self, msg):
         self.request_time = time.perf_counter()
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
@@ -151,9 +157,10 @@ class R2ANewAlgorithm1(IR2A):
         self.parsed_mpd = parse_mpd(msg.get_payload())
         self.qi = self.parsed_mpd.get_qi()
         
-        #t = time.perf_counter() - self.request_time
-        #self.throughputs.append(msg.get_bit_length() / t)
-
+        a = np.array(self.qi)
+        # definir o (state s, action a, reward r)
+        if self.statesdef:
+            self.Q = Qlearn(states, a)
         
         self.send_up(msg) # envia até a Camada Superior (Player)
 
@@ -162,19 +169,14 @@ class R2ANewAlgorithm1(IR2A):
         #avg = mean(self.throughputs) / 2
         
         # Inicializa 'act' com um valor padrão
-        act = 0  
+        self.act = 1
 
-        if hasattr(self, 'Q'):
-            # Verifica se act não está vazio e usa um valor padrão se necessário
-            if act:
-                act = self.qi[self.Q.choose_action(self.ls[act])]
-            else:
-                act = 0  # Valor padrão, caso 'self.ls' esteja vazio
-        else:
-            act = 0
-
-        msg.add_quality_id(self.qi[act])
-        self.ls.append(act)
+        if self.ls and self.Q:
+            print('funfou')
+            self.act = self.Q.choose_action(self.ls[-1])
+        print(self.act)
+        msg.add_quality_id(self.qi[self.act])
+        self.ls.append(self.act)
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_segment_size_response(self, msg):
@@ -192,7 +194,9 @@ class R2ANewAlgorithm1(IR2A):
         throughputsestimate = np.array(self.throughputs)
         lastsegments = np.array(self.ls)
         download_time = np.array(self.td)
-
+        
+        if len(self.buffersizeseconds) >= 3 and len(self.buffersizeseconds) < 500:
+            print(self.buffersizeseconds[-1], self.throughputs[-1], self.ls[-1], self.td[-1])
         scaler = MinMaxScaler()
 
         bufferocupancy = scaler.fit_transform(bufferocupancy.reshape(-1,1)).flatten()
@@ -206,13 +210,30 @@ class R2ANewAlgorithm1(IR2A):
             lastsegments,
             download_time
         ]).T #transposta para que cada linha seja um estado
+        self.statesdef = True
 
-        a = np.array(self.qi)
-        # definir o (state s, action a, reward r)
-        #print(states, a)
-        if states.any():
-            self.Q = Qlearn(states, a)
+        if hasattr(self, 'Q') and len(bufferocupancy) >= 2 and len(throughputsestimate) >= 2 and len(lastsegments) >= 2 and len(download_time) >= 2:
+            # Calcular a penalidade φ(t)
+            Td = self.td[-1]  # Último tempo de download
+            Bt = bufferocupancy[-1]  # Ocupação atual do buffer
+            Bm = max(bufferocupancy)  # Tamanho máximo do buffer
+            alpha = 0.5
+            beta = 0.3
 
+            # Termo de penalidade
+            fi = alpha * max(0, Td - Bt) + beta * (max(0, Bm - Bt))**2
+
+            # Função de Recompensa
+            q_t = self.ls[-1]  # Qualidade atual
+            q_t_1 = self.qi[self.ls[-2]] if len(self.ls) > 0 else 0  # Qualidade do segmento anterior
+
+            rew = q_t - alpha * abs(q_t - q_t_1) - fi  # Função de recompensa
+
+            # Atualização do Q-learning
+            a = self.act  # Ação atual
+            next = self.Q.choose_action(a)
+            self.Q.update(states.size, a, rew, next)
+            
         #print("segm, bitlength e kind", msg.get_segment_size(), msg.get_bit_length(), msg.get_kind())
         self.send_up(msg) # envia até a Camada Superior (Player)
 
