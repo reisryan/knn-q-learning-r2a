@@ -89,7 +89,7 @@ class Qlearn:
         if self.s.ndim == 1:
             self.k = self.s.reshape(-1, 1)
         self.KNN.fit(self.k, self.a)
-        self.alpha, self.beta, self.gamma, self.e = 0.5, 0.3, 0.15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
+        self.alpha, self.beta, self.gamma, self.e = 0.3, 0.95, 0.15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
 
     def choose_action(self, s):
         if np.random.uniform(0, 1) < self.e:  # taxa de exploração
@@ -222,9 +222,9 @@ class R2ANewAlgorithm1(IR2A):
             # Calcular a penalidade φ(t)
             Td = self.td[-1]  # Último tempo de download
             Bt = bufferocupancy[-1]  # Ocupação atual do buffer
-            Bm = max(bufferocupancy)  # Tamanho máximo do buffer
+            Bm = 10  # Tamanho máximo do buffer max(bufferocupancy)
             alpha = 0.5
-            beta = 0.3
+            beta = 0.001
 
             # Termo de penalidade
             fi = alpha * max(0, Td - Bt) + beta * (max(0, Bm - Bt))**2
@@ -239,7 +239,7 @@ class R2ANewAlgorithm1(IR2A):
             # Atualização do Q-learning
             a = self.act  # Ação atual
             next = self.Q.choose_action(a)
-            self.Q.update(self.ls[-2], a, rew, next) # atualiza a tabela Q conforme o penultimo segmento escolhido
+            self.Q.update(self.ls[-2], a, rew, next) # atualiza a tabela Q conforme o penultimo segmento escolhido ou # states.shape[0]
             
         self.send_up(msg) # envia até a Camada Superior (Player)
 
