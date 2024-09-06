@@ -50,12 +50,18 @@ class KNNModel:
         :param X: Estado atual para o qual encontrar os vizinhos.
         :return: Pesos w(k) dos vizinhos.
         """
+        # Garanta que X seja uma matriz 2D
+        if np.isscalar(X):
+            X = np.array([[X]])  # Transforme o escalar em uma matriz 2D com uma única linha
+        elif X.ndim == 1:
+            X = X.reshape(1, -1)
+
         distances, indices = self.model.kneighbors(X)
         
         # Calcular w(k) = (1/d(k)) / sum(1/d(k)) para cada k
         weights = []
         for d in distances:
-            inverse_distances = 1 / d  # 1/d(k)
+            inverse_distances = 1 / (d + 1e-10)  # Adiciona um pequeno valor para evitar divisão por zero
             sum_inverse_distances = np.sum(inverse_distances)  # Somatório de 1/d(k)
             w = inverse_distances / sum_inverse_distances  # Ponderação final
             weights.append(w)
@@ -79,9 +85,11 @@ class Qlearn:
         self.s = s
         self.a = a
         self.Q = np.zeros((self.s.size,self.a.size))
-        KNN = KNNModel()
-        #KNN.fit(np.reshape(self.s, (-1, 4)), np.reshape(self.a, (-1,)))
-        self.alpha, self.beta, self.gamma, self.e = 0.5, 0.4, 0.15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
+        self.KNN = KNNModel()
+        if self.s.ndim == 1:
+            self.k = self.s.reshape(-1, 1)
+        self.KNN.fit(self.k, self.a)
+        self.alpha, self.beta, self.gamma, self.e = 0.5, 0.3, 0.15, 0.2 # gtaxa de aprendizado, fator de desconto e taxa de exploração
 
     def choose_action(self, s):
         if np.random.uniform(0, 1) < self.e:  # taxa de exploração
@@ -90,28 +98,28 @@ class Qlearn:
             return np.argmax(self.Q[s])
 
     def update(self, s, a, r, next):
-        #if np.isin(s, self.s):
-        max = self.choose_action(next)
-        upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
-        self.Q[s,a] = self.Q[s,a] + self.alpha * upd
-        print("updated", s, a, r, next)
-        '''elif not np.isin(s, self.s):
+        if np.isin(s, self.s):
+            max = self.choose_action(next)
+            upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
+            self.Q[s,a] = self.Q[s,a] + self.alpha * upd
+            print("updated", s, a, r, next)
+        elif not np.isin(s, self.s):
             # Escolhe a ação para o próximo estado
-            max_action = self.choose_action(next_state)
+            max_action = self.choose_action(next)
 
             # Obtém os pesos dos k-vizinhos mais próximos do estado atual
-            #w = KNN.knn_weights(s)
+            w = self.KNN.knn_weights(s)
 
             # Obtém os índices dos k-vizinhos mais próximos para o estado atual e próximo
-            next_neighbors_distances, next_neighbors_indices = KNN.kneighbors(next_state)
-            s_neighbors_distances, s_neighbors_indices = KNN.kneighbors(s)
+            next_neighbors_distances, next_neighbors_indices = self.KNN.model.kneighbors(np.array([[next]]))
+            s_neighbors_distances, s_neighbors_indices = self.KNN.model.kneighbors(np.array([[s]]))
 
             # Atualiza Q usando a fórmula ajustada
             upd = (r + self.beta * sum(w[i] * np.max(self.Q[next_neighbors_indices[i], max_action]) for i in range(len(w))) 
             - sum(w[i] * self.Q[s_neighbors_indices[i], max_action] for i in range(len(w))))
 
             # Atualiza a tabela Q para o estado s e ação a
-            self.Q[s_neighbors_indices, a] = self.Q[s_neighbors_indices, a] + self.alpha * upd '''
+            self.Q[s_neighbors_indices, a] = self.Q[s_neighbors_indices, a] + self.alpha * upd
 
     def train(self, e, env):
         """
@@ -144,7 +152,7 @@ class R2ANewAlgorithm1(IR2A):
         self.td = [] # lista dos time-of-downloads
         self.buffersizeseconds = []
         self.parsed_mpd = ''
-        self.Q = Qlearn(np.empty(4000), np.empty(20))
+        self.Q = Qlearn(np.empty(20), np.empty(20))
         self.statesdef = False
         self.act = 0
 
@@ -195,8 +203,6 @@ class R2ANewAlgorithm1(IR2A):
         lastsegments = np.array(self.ls)
         download_time = np.array(self.td)
         
-        if len(self.buffersizeseconds) >= 3 and len(self.buffersizeseconds) < 500:
-            print(self.buffersizeseconds[-1], self.throughputs[-1], self.ls[-1], self.td[-1])
         scaler = MinMaxScaler()
 
         bufferocupancy = scaler.fit_transform(bufferocupancy.reshape(-1,1)).flatten()
@@ -229,12 +235,12 @@ class R2ANewAlgorithm1(IR2A):
 
             rew = q_t - alpha * abs(q_t - q_t_1) - fi  # Função de recompensa
 
+
             # Atualização do Q-learning
             a = self.act  # Ação atual
             next = self.Q.choose_action(a)
-            self.Q.update(states.size, a, rew, next)
+            self.Q.update(self.ls[-2], a, rew, next) # atualiza a tabela Q conforme o penultimo segmento escolhido
             
-        #print("segm, bitlength e kind", msg.get_segment_size(), msg.get_bit_length(), msg.get_kind())
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def initialize(self):
