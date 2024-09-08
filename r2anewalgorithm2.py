@@ -167,7 +167,7 @@ class Qlearn:
                 
                 env.render()
 
-class R2ANewAlgorithm1(IR2A):
+class R2ANewAlgorithm2(IR2A):
 
     def __init__(self, id):
         #SimpleModule.__init__(self, id)
@@ -221,7 +221,7 @@ class R2ANewAlgorithm1(IR2A):
             i = 0
         else:
             i = self.buffersizeseconds[-1]
-        self.buffersizeseconds.append(float(i+t))
+        self.buffersizeseconds.append(float(t))
         q = self.qi.index(msg.get_quality_id())
 
         bufferocupancy = np.array(self.buffersizeseconds)
