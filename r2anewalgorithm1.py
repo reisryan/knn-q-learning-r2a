@@ -105,13 +105,15 @@ class Qlearn:
     def choose_action(self, s):
         # Diminui a taxa de exploração após cada episódio
         self.e = max(0.01, self.e * 0.99)  # Decrementa e por episódio
+        Q_values = self.Q[s]
 
         if np.random.rand() < self.e:
-            # Escolha aleatória com probabilidade e
-            return np.random.choice(len(self.Q[s]))
+            # Escolha aleatória com probabilidade e, e p
+            act_prob2 = self.softmax(Q_values[:-2])
+            return np.random.choice(len(Q_values[:-2]),p= act_prob2)
         else:
             # Escolha com base na política Q learn
-            Q_values = self.Q[s]
+            
             action_probabilities = self.softmax(Q_values)
             return np.random.choice(len(Q_values), p=action_probabilities)
 
@@ -208,8 +210,8 @@ class R2ANewAlgorithm1(IR2A):
         if not self.buffersizeseconds:
             i = 0
         else:
-            i = self.buffersizeseconds[-1]
-        self.buffersizeseconds.append(float(i+t))
+            i = self.whiteboard.get_playback_buffer_size()[-1][1]
+        self.buffersizeseconds.append(float(i))
         q = self.qi.index(msg.get_quality_id())
 
         bufferocupancy = np.array(self.buffersizeseconds)
