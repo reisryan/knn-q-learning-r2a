@@ -98,7 +98,19 @@ class Qlearn:
         :param Q_values: Valores da função Q para o estado atual.
         :return: Probabilidades normalizadas para cada ação.
         """
-        # Estabilização numérica subtraindo o maior valor de Q_values
+        # Ajusta a temperatura com base na taxa de exploração
+        adjusted_tau = self.tau / (1 + self.e)  # Reduz a temperatura conforme a exploração diminui
+        Q_values = Q_values - np.max(Q_values)  # Estabilização numérica
+
+        exp_Q = np.exp(Q_values / adjusted_tau)  # Aplica o softmax com temperatura ajustada
+        sum_exp_Q = np.sum(exp_Q)  # Soma das exponenciais
+
+        # Tratar overflow ou NaN dividindo por zero ou valores muito grandes
+        if np.isnan(sum_exp_Q) or sum_exp_Q == 0:
+            return np.ones_like(Q_values) / len(Q_values)  # Distribui probabilidades uniformemente
+        
+        return exp_Q / sum_exp_Q
+        '''# Estabilização numérica subtraindo o maior valor de Q_values
         Q_values = Q_values - np.max(Q_values)
         
         exp_Q = np.exp(Q_values / self.tau)  # Aplica o softmax com temperatura
@@ -108,20 +120,29 @@ class Qlearn:
         if np.isnan(sum_exp_Q) or sum_exp_Q == 0:
             return np.ones_like(Q_values) / len(Q_values)  # Distribui probabilidades uniformemente
         
-        return exp_Q / sum_exp_Q  
+        return exp_Q / sum_exp_Q  '''
 
     def choose_action(self, s):
-        print('s:', s)
-        print('q table:', self.Q)
-        Q_values = self.Q[s]  # Valores de Q para o estado atual
+        # Diminui a taxa de exploração após cada episódio
+        self.e = max(0.01, self.e * 0.99)  # Decrementa ε por episódio
+
+        if np.random.rand() < self.e:
+            # Escolha aleatória com probabilidade ε
+            return np.random.choice(len(self.Q[s]))
+        else:
+            # Escolha com base na política Q
+            Q_values = self.Q[s]
+            action_probabilities = self.softmax(Q_values)
+            return np.random.choice(len(Q_values), p=action_probabilities)
+        #Q_values = self.Q[s]  # Valores de Q para o estado atual
         
         # Calcula as probabilidades para cada ação usando softmax
-        action_probabilities = self.softmax(Q_values)
+        #action_probabilities = self.softmax(Q_values)
         
         # Escolhe uma ação com base nas probabilidades
-        action = np.random.choice(len(Q_values), p=action_probabilities)
+        #action = np.random.choice(len(Q_values), p=action_probabilities)
         
-        return action
+        #return action
 
     def update(self, s, a, r, next):
         if np.isin(s, self.s):
@@ -130,6 +151,7 @@ class Qlearn:
             self.Q[s,a] = self.Q[s,a] + self.alpha * upd
             print("updated", s, a, r, next)
         elif not np.isin(s, self.s):
+            self.KNN.fit(self.k, self.a) # Atualiza o algoritmo knn
             # Escolhe a ação para o próximo estado
             max_action = self.choose_action(next)
 
@@ -221,7 +243,7 @@ class R2ANewAlgorithm2(IR2A):
             i = 0
         else:
             i = self.buffersizeseconds[-1]
-        self.buffersizeseconds.append(float(t))
+        self.buffersizeseconds.append(float(i+t))
         q = self.qi.index(msg.get_quality_id())
 
         bufferocupancy = np.array(self.buffersizeseconds)
@@ -265,7 +287,7 @@ class R2ANewAlgorithm2(IR2A):
             # Atualização do Q-learning
             a = self.act  # Ação atual
             next = self.Q.choose_action(a)
-            self.Q.update(self.ls[-1], a, rew, next) # atualiza a tabela Q conforme o penultimo segmento escolhido ou # states.shape[0]
+            self.Q.update(self.ls[-1], a, rew, next) # atualiza a tabela Q conforme o ultimo segmento escolhido ou # states.shape[0]
             
         self.send_up(msg) # envia até a Camada Superior (Player)
 
