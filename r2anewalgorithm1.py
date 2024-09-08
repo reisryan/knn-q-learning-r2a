@@ -4,19 +4,16 @@
 #         Ryan Reis Fontenele - 211036132                   #
 #############################################################
 # dataset original: "http://45.171.101.167/DASHDataset/BigBuckBunny/1sec/BigBuckBunny_1s_simple_2014_05_09.mpd",
-# dataset de TESTES FUNCIONAL: "http://164.41.67.41/DASHDatasetTest/BigBuckBunny/1sec/BigBuckBunny_1s_simple_2014_05_09.mpd",
+# dataset de TESTES MENOR: "http://164.41.67.41/DASHDatasetTest/BigBuckBunny/1sec/BigBuckBunny_1s_simple_2014_05_09.mpd",
 from r2a.ir2a import IR2A
 from player.parser import *
-from player.player import *
 from statistics import mean
 from sklearn.neighbors import KNeighborsRegressor as KnnR
-from sklearn.metrics import mean_squared_error
-from sklearn.preprocessing import MinMaxScaler
 import numpy as np
 import time
 
 class KNNModel:
-    def __init__(self, n_neighbors=3):
+    def __init__(self, n_neighbors=1):
         """
         Inicializa o modelo KNN.
         
@@ -54,7 +51,7 @@ class KNNModel:
         if np.isscalar(X):
             X = np.array([[X]])  # Transforme o escalar em uma matriz 2D com uma única linha
         elif X.ndim == 1:
-            X = X.reshape(1, -1)
+            X = X.reshape(1, -1) # garante que X seja 2D
 
         distances, indices = self.model.kneighbors(X)
         
@@ -68,20 +65,14 @@ class KNNModel:
         
         return weights
 
-    def evaluate(self, X_test, y_test):
-        """
-        Avalia o modelo usando o erro quadrático médio (MSE).
-        
-        :param X_test: Conjunto de características de teste.
-        :param y_test: Conjunto de rótulos de teste.
-        :return: O MSE das previsões do modelo.
-        """
-        predictions = self.predict(X_test)
-        mse = mean_squared_error(y_test, predictions)
-        return mse
-
 class Qlearn:
     def __init__(self, s, a):
+        """
+        Inicializa o algoritmo Q-learning.
+        
+        :param s: Conjunto de estados.
+        :param a: Conjunto de ações.
+        """
         self.s = s
         self.a = a
         self.Q = np.zeros((self.s.size,self.a.size))
@@ -89,7 +80,7 @@ class Qlearn:
         if self.s.ndim == 1:
             self.k = self.s.reshape(-1, 1)
         self.KNN.fit(self.k, self.a)
-        self.alpha, self.beta, self.e, self.tau = 0.5, 0.95, 0.4, 0.5 # gtaxa de aprendizado, fator de desconto e taxa de exploração
+        self.alpha, self.beta, self.e, self.tau = 0.5, 0.95, 0.4, 0.5 # Taxa de aprendizado, fator de desconto, taxa de exploração e "temperatura"
 
     def softmax(self, Q_values):
         """
@@ -110,49 +101,36 @@ class Qlearn:
             return np.ones_like(Q_values) / len(Q_values)  # Distribui probabilidades uniformemente
         
         return exp_Q / sum_exp_Q
-        '''# Estabilização numérica subtraindo o maior valor de Q_values
-        Q_values = Q_values - np.max(Q_values)
-        
-        exp_Q = np.exp(Q_values / self.tau)  # Aplica o softmax com temperatura
-        sum_exp_Q = np.sum(exp_Q)  # Soma das exponenciais
-        
-        # Tratar overflow ou NaN dividindo por zero ou valores muito grandes
-        if np.isnan(sum_exp_Q) or sum_exp_Q == 0:
-            return np.ones_like(Q_values) / len(Q_values)  # Distribui probabilidades uniformemente
-        
-        return exp_Q / sum_exp_Q  '''
 
     def choose_action(self, s):
         # Diminui a taxa de exploração após cada episódio
-        self.e = max(0.01, self.e * 0.99)  # Decrementa ε por episódio
+        self.e = max(0.01, self.e * 0.99)  # Decrementa e por episódio
 
         if np.random.rand() < self.e:
-            # Escolha aleatória com probabilidade ε
+            # Escolha aleatória com probabilidade e
             return np.random.choice(len(self.Q[s]))
         else:
-            # Escolha com base na política Q
+            # Escolha com base na política Q learn
             Q_values = self.Q[s]
             action_probabilities = self.softmax(Q_values)
             return np.random.choice(len(Q_values), p=action_probabilities)
-        #Q_values = self.Q[s]  # Valores de Q para o estado atual
-        
-        # Calcula as probabilidades para cada ação usando softmax
-        #action_probabilities = self.softmax(Q_values)
-        
-        # Escolhe uma ação com base nas probabilidades
-        #action = np.random.choice(len(Q_values), p=action_probabilities)
-        
-        #return action
 
     def update(self, s, a, r, next):
+        """
+        Atualiza a tabela Q com base na recompensa recebida e no próximo estado.
+        
+        :param s: Estado atual.
+        :param a: Ação executada.
+        :param r: Recompensa recebida.
+        :param next: Próximo estado.
+        """
         if np.isin(s, self.s):
             max = self.choose_action(next)
             upd = r + self.beta * self.Q[next,max] - self.Q[s, a]
             self.Q[s,a] = self.Q[s,a] + self.alpha * upd
-            print("updated", s, a, r, next)
         elif not np.isin(s, self.s):
             self.KNN.fit(self.k, self.a) # Atualiza o algoritmo knn
-            # Escolhe a ação para o próximo estado
+            
             max_action = self.choose_action(next)
 
             # Obtém os pesos dos k-vizinhos mais próximos do estado atual
@@ -162,20 +140,19 @@ class Qlearn:
             next_neighbors_distances, next_neighbors_indices = self.KNN.model.kneighbors(np.array([[next]]))
             s_neighbors_distances, s_neighbors_indices = self.KNN.model.kneighbors(np.array([[s]]))
 
-            # Atualiza Q usando a fórmula ajustada
+            # Atualiza Q usando a fórmula do artigo
             upd = (r + self.beta * sum(w[i] * np.max(self.Q[next_neighbors_indices[i], max_action]) for i in range(len(w))) 
             - sum(w[i] * self.Q[s_neighbors_indices[i], max_action] for i in range(len(w))))
 
             # Atualiza a tabela Q para o estado s e ação a
             self.Q[s_neighbors_indices, a] = self.Q[s_neighbors_indices, a] + self.alpha * upd
 
-    def train(self, e, env):
-        """
+    """def train(self, e, env):
         Treina o agente em um determinado ambiente.
         
         :param e: Número de episódios de treinamento.
         :param env: O ambiente de treinamento, que deve ter métodos `reset`, `step` e `render`.
-        """
+        
         for episode in range(e):
             state = env.reset()
             done = False
@@ -187,50 +164,39 @@ class Qlearn:
                 self.update_q_table(state, action, reward, next_state)
                 state = next_state
                 
-                env.render()
+                env.render()"""
 
 class R2ANewAlgorithm1(IR2A):
 
     def __init__(self, id):
-        #SimpleModule.__init__(self, id)
         IR2A.__init__(self, id) #herda o IR2A e seus métodos abstratos
         self.qi = [] #lista de qualidades
         self.ls = [] #lista das ultimas-qualidades
         self.throughputs = [] #lista de throughputs
         self.td = [] # lista dos time-of-downloads
-        self.buffersizeseconds = []
+        self.buffersizeseconds = [] # lista com o somatório do tempo de download (ultimo + atual)
         self.parsed_mpd = ''
-        self.Q = Qlearn(np.empty(20), np.empty(20))
-        self.statesdef = False
-        self.act = 0
+        self.Q = Qlearn(np.empty(20), np.empty(20)) # instanciação do Q learning
+        self.act = 0 # qualidade atual selecionada
 
     def handle_xml_request(self, msg):
-        self.request_time = time.perf_counter()
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
 
     def handle_xml_response(self, msg):
-        
         self.parsed_mpd = parse_mpd(msg.get_payload())
         self.qi = self.parsed_mpd.get_qi()
-        
-        a = np.array(self.qi)
-        # definir o (state s, action a, reward r)
-        #if self.statesdef:
-        #    self.Q = Qlearn(states, a)
         
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def handle_segment_size_request(self, msg):
-        self.request_time = time.perf_counter()
-        #avg = mean(self.throughputs) / 2
+        self.request_time = time.perf_counter() # atualiza o valor do tempo
         
-        # Inicializa 'act' com um valor padrão
+        # Inicializa self.act com um valor padrão
         self.act = 1
 
         if self.ls and self.Q:
-            print('funfou')
             self.act = self.Q.choose_action(self.ls[-1])
-        print(self.act)
+
         msg.add_quality_id(self.qi[self.act])
         self.ls.append(self.act)
         self.send_down(msg) # envia até a Camada Inferior (ConnectionHandler)
@@ -251,12 +217,6 @@ class R2ANewAlgorithm1(IR2A):
         lastsegments = np.array(self.ls)
         download_time = np.array(self.td)
         
-        scaler = MinMaxScaler()
-
-        #bufferocupancy = scaler.fit_transform(bufferocupancy.reshape(-1,1)).flatten()
-        #throughputsestimate = scaler.fit_transform(throughputsestimate.reshape(-1,1)).flatten()
-        #lastsegments = scaler.fit_transform(lastsegments.reshape(-1,1)).flatten()
-        #download_time = scaler.fit_transform(download_time.reshape(-1,1)).flatten()
 
         states = np.vstack([
             bufferocupancy,
@@ -267,7 +227,7 @@ class R2ANewAlgorithm1(IR2A):
         self.statesdef = True
 
         if hasattr(self, 'Q') and len(bufferocupancy) >= 2 and len(throughputsestimate) >= 2 and len(lastsegments) >= 2 and len(download_time) >= 2:
-            # Calcular a penalidade φ(t)
+            # Calcular a penalidade fi(t)
             Td = self.td[-1]  # Último tempo de download
             Bt = bufferocupancy[-1]  # Ocupação atual do buffer
             Bm = 10  # Tamanho máximo do buffer max(bufferocupancy)
@@ -287,8 +247,8 @@ class R2ANewAlgorithm1(IR2A):
             # Atualização do Q-learning
             a = self.act  # Ação atual
             next = self.Q.choose_action(a)
-            self.Q.update(self.ls[-1], a, rew, next) # atualiza a tabela Q conforme o ultimo segmento escolhido ou # states.shape[0]
-            
+            self.Q.update(self.ls[-1], a, rew, next) # atualiza a tabela Q conforme o ultimo segmento escolhido
+
         self.send_up(msg) # envia até a Camada Superior (Player)
 
     def initialize(self):
